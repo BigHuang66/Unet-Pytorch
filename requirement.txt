@@ -1,0 +1,8 @@
+visualdl >= 2.0.0
+torch
+torchvision
+opencv-python
+tqdm
+albumentations
+numpy
+pillow
