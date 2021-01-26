@@ -42,9 +42,6 @@ class Up(nn.Module):
 
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
-        self.ca = ChannelAttention(in_channels)
-        self.sa = SpatialAttention()
-
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
@@ -54,8 +51,6 @@ class Up(nn.Module):
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
                         diffY // 2, diffY - diffY // 2])
         x = torch.cat([x2, x1], dim=1)
-        x = self.ca(x) * x
-        x = self.sa(x) * x
 
         return self.conv(x)
 
