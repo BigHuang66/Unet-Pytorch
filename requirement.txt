@@ -1,6 +1,7 @@
 visualdl >= 2.0.0
 torch
 torchvision
+paddleseg
 opencv-python
 tqdm
 albumentations
