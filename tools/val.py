@@ -72,7 +72,7 @@ def evaluate(model,
                     model,
                     image,
                     ori_shape=ori_shape,
-                    transforms=eval_dataset.transforms.transforms,
+                    transforms=eval_dataset.transform,
                     scales=scales,
                     flip_horizontal=flip_horizontal,
                     flip_vertical=flip_vertical,
@@ -107,11 +107,14 @@ def evaluate(model,
 
     class_iou, miou = metrics.mean_iou(intersect_area_all, pred_area_all,
                                        label_area_all)
+    class_dice, dice = metrics.dice(intersect_area_all, pred_area_all,
+                                       label_area_all)
     class_acc, acc = metrics.accuracy(intersect_area_all, pred_area_all)
     kappa = metrics.kappa(intersect_area_all, pred_area_all, label_area_all)
 
-    logger.info("[EVAL] #Images={} mIoU={:.4f} Acc={:.4f} Kappa={:.4f} ".format(
-        len(eval_dataset), miou, acc, kappa))
+    logger.info("[EVAL] #Images={} mIoU={:.4f} dice={:.4f} Acc={:.4f} Kappa={:.4f} ".format(
+        len(eval_dataset), miou, dice, acc, kappa))
     logger.info("[EVAL] Class IoU: \n" + str(np.round(class_iou, 4)))
+    logger.info("[EVAL] Class dice: \n" + str(np.round(class_dice, 4)))
     logger.info("[EVAL] Class Acc: \n" + str(np.round(class_acc, 4)))
     return miou, acc
