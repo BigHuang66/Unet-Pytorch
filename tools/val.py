@@ -117,4 +117,4 @@ def evaluate(model,
     logger.info("[EVAL] Class IoU: \n" + str(np.round(class_iou, 4)))
     logger.info("[EVAL] Class dice: \n" + str(np.round(class_dice, 4)))
     logger.info("[EVAL] Class Acc: \n" + str(np.round(class_acc, 4)))
-    return miou, acc
+    return miou, dice, acc

@@ -18,12 +18,13 @@ import time
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingWarmRestarts
 from torch import optim
 from torch.autograd import Variable
 import torch.nn as nn
 from utils import Timer, calculate_eta, logger
 from tools.val import evaluate
+from model.losses import DiceLoss, CrossEntropyLoss, FocalLoss, LovaszSoftmax
 
 
 # def check_logits_losses(logits_list, losses):
@@ -78,7 +79,6 @@ def train(params,
             The 'types' item is a list of object of paddleseg.models.losses while the 'coef' item is a list of the relevant coefficient.
     """
    #TODO 多卡模式
-   #TODO resume模式
 
     max_iters      = params['max_iters']
     batch_size     = params['batch_size']
@@ -99,17 +99,36 @@ def train(params,
         if os.path.exists(ckpt_dir):
             os.remove(ckpt_dir)
         os.makedirs(ckpt_dir)
-
+        
     if use_vdl:
         from visualdl import LogWriter
-        log_writer = LogWriter(ckpt_dir)
+        log_dir = os.path.join(ckpt_dir, 'logs')
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+        log_writer = LogWriter(log_dir)
     if device == None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
   
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
-    criterion = nn.CrossEntropyLoss(reduction='mean').to(device)
+    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=150*5, T_mult=2)
+    
+    diceloss = DiceLoss().to(device)
+    crossentropy = CrossEntropyLoss().to(device)
+
+    if resume_model != None:
+        if os.path.exists(resume_model):
+            logger.info('Loading pretrained model from {}'.format(resume_model))
+            checkpoint = torch.load(resume_model)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optim_state_dict'])
+            criterion.load_state_dict(checkpoint['criterion_state_dict'])
+            start_iter = checkpoint['iter']
+        else:
+            raise ValueError(
+                'The pretrained model directory is not Found: {}'.format(
+                    pretrained_model))
+
 
     timer = Timer()
     avg_loss = 0.0
@@ -131,14 +150,14 @@ def train(params,
             images, labels = Variable(images.to(device)), Variable(labels.to(device))
             optimizer.zero_grad()
             pred = model(images)
-            loss = criterion(pred, labels.long())
+            loss = diceloss(pred, labels.long()) + crossentropy(pred, labels.long())
             loss.backward()
             optimizer.step()
            
             lr = optimizer.state_dict()['param_groups'][0]['lr']
             scheduler.step()
 
-            avg_loss += loss.item()#.cup().numpy()[0]
+            avg_loss += loss.item()
             train_batch_cost += timer.elapsed_time()
 
             if (iter) % log_iters == 0:
@@ -165,7 +184,7 @@ def train(params,
 
             if (iter % save_iters == 0 or iter == max_iters) and (val_dataset is not None):
                 num_workers = 1 if num_workers > 0 else 0
-                mean_iou, acc = evaluate(
+                mean_iou, dice, acc = evaluate(
                     model, val_dataset, device=device, num_workers=num_workers)
                 model.train()
 
@@ -174,10 +193,12 @@ def train(params,
                                                 "iter_{}".format(iter))
                 if not os.path.isdir(current_save_dir):
                     os.makedirs(current_save_dir)
-                torch.save(model.state_dict(),
+                checkpoint_dict = {'iter': iter,
+                                    'model_state_dict': model.state_dict(),
+                                    'optim_state_dict': optimizer.state_dict()}
+                                    # 'criterion_state_dict': criterion.state_dict()}
+                torch.save(checkpoint_dict,
                             os.path.join(current_save_dir, 'model.pth'))
-                torch.save(optimizer.state_dict(),
-                            os.path.join(current_save_dir, 'params.pth'))
 
                 if val_dataset is not None:
                     if mean_iou > best_mean_iou:
@@ -195,6 +216,7 @@ def train(params,
 
                     if use_vdl:
                         log_writer.add_scalar('Evaluate/mIoU', mean_iou, iter)
+                        log_writer.add_scalar('Evaluate/dice', dice, iter)
                         log_writer.add_scalar('Evaluate/Acc', acc, iter)
             timer.restart()
 

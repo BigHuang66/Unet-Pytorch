@@ -35,7 +35,7 @@ if not os.path.exists(ckpt_dir):
 model = UNet(3, 3).to(device)
 
 param = {}
-param['max_iters'] = 20000        # 训练step数
+param['max_iters'] = 15000        # 训练step数
 param['batch_size'] = 2        # batch_size
 param['lr'] = 1e-2             # 学习率
 param['gamma'] = 0.6           # 学习率衰减系数
@@ -51,13 +51,15 @@ if __name__ == "__main__":
     args = parse_args()
 
     if args.command == 'train':
-        train(param, model, train_dataset, val_dataset, device=device)
+        train(param, model, train_dataset, val_dataset, device=device, use_vdl=True)
     elif args.command == 'eval':
-        best_miou_model = os.path.join(ckpt_dir, 'best_model', 'model.pdparams')
-        model.load_state_dict(torch.load(best_miou_model, map_location='cpu'))
-        mean_iou, acc = evaluate(model, val_dataset, device=device, num_workers=0) #, aug_eval=True, is_slide=True, stride=(64, 64), crop_size=(128, 128))
+        best_miou_model = os.path.join(ckpt_dir, 'best_model', 'model.pth')
+        model.load_state_dict(torch.load(best_miou_model))
+        mean_iou, dice, acc = evaluate(model, val_dataset, device=device, num_workers=0, aug_eval=True) #, is_slide=True, stride=(64, 64), crop_size=(128, 128))
     elif args.command == 'predict':
         best_miou_model = os.path.join(ckpt_dir, 'best_model', 'model.pdparams')
         predict(model, best_miou_model, transforms=val_dataset.transform, 
                 image_list=train_dataset.file_list, image_dir=val_dataset.image_path, 
                 save_dir=ckpt_dir, device=device)
+
+
